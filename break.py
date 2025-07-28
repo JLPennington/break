@@ -7,8 +7,8 @@ import csv
 # Assumptions (Updated as of July 28, 2025; no major changes in standards from empirical data and EN 538 for tiles):
 # - Base forces (F1 in lbf) for single layer derived from empirical data:
 #   - Pine: 200 lbf (adjusted from initial 150 based on dynamic tests; aligns with ~1,100 N averages for 0.75" pine)
-# - Paulownia (as poplar alternative): 100 lbf (scaled via MOR ratio ~0.5-0.7 vs. pine; density 280-300 kg/m³)
-# - Concrete: 500 lbf (empirical range 300-1,100 lbf; average for low-density patio slabs)
+#   - Paulownia (as poplar alternative): 100 lbf (scaled via MOR ratio ~0.5-0.7 vs. pine; density 280-300 kg/m³)
+#   - Concrete: 500 lbf (empirical range 300-1,100 lbf; average for low-density patio slabs)
 # - Contact area A = 2.5 in² for PSI calculation (from biomechanical strike data).
 # - Materials classified as 'flexible' (wood: pine, paulownia) or 'brittle' (concrete) to model differences in breaking behavior.
 # - For unpegged stacks: Force scales with square for flexible (beam theory approximation for dynamic impacts), linear for brittle:
@@ -28,8 +28,11 @@ import csv
 # - Default spacing: US penny (1.52 mm)
 # - Carpenter pencil: 6.35 mm
 # - For very small h (<1 mm), assist negligible, but may approach unpegged if too small; not modeled here as typical h >=1.5 mm.
-# - Calculations are approximations; actual breaking varies with technique, material variability (±20-30%).
+# - Calculations are approximations; actual breaking varies with technique, material quality (±20-30%).
 # - PSI = F / A
+# - Bone correlations: After calculating force, compare to average breaking forces for human bones (healthy adult; approximations only, vary by individual factors like age, density).
+#   Bone data (lbf): Ribs (742), Femur (899), Skull (517 crush/196 fracture), Humerus (787), Tibia (900), Clavicle (147), Ulna (337).
+#   Outputs bones where material force >= bone force (could potentially break that bone; for educational purposes only, not medical advice).
 
 MATERIALS_DICT = {
     'pine': {'F1': 200, 'm': 0.8, 'type': 'flexible'},
@@ -41,6 +44,17 @@ MATERIAL_MAP = {
     '1': MATERIALS_DICT['pine'],
     '2': MATERIALS_DICT['paulownia'],
     '3': MATERIALS_DICT['concrete'],
+}
+
+BONE_DATA = {
+    'Clavicle': 147,
+    'Skull (fracture)': 196,
+    'Ulna': 337,
+    'Skull (crush)': 517,
+    'Ribs': 742,
+    'Humerus': 787,
+    'Femur': 899,
+    'Tibia': 900,
 }
 
 G = 9.8  # m/s²
@@ -73,22 +87,29 @@ def calculate_force(material_data, n, config, spacing=None):
         F = max(F_base - reduction, F1 * max(1, n * 0.5))
         return F
 
+def get_correlated_bones(force):
+    bones = [bone for bone, bone_force in BONE_DATA.items() if force >= bone_force]
+    return ', '.join(bones) if bones else 'None (below typical bone breaking thresholds)'
+
 def print_result(n, force, psi):
     print(f"Layers: {n}, Force: {force:.1f} lbf, PSI: {psi:.1f}")
+    print(f"Correlated Bones (could potentially break): {get_correlated_bones(force)}")
+    print("(Note: Bone data approximations for healthy adults; not medical advice.)")
 
 def print_matrix(material_data, config, spacing=None):
     print(f"Matrix for {config} ({'spacing ' + str(spacing) + ' mm' if config == 'pegged' and spacing else ''}):")
-    print("| Layers | Force (lbf) | PSI |")
-    print("|---|---|---|")
+    print("| Layers | Force (lbf) | PSI | Correlated Bones |")
+    print("|---|---|---|---|")
     for n in range(1, 11):
         force = calculate_force(material_data, n, config, spacing)
         psi = force / A
-        print(f"| {n} | {force:.1f} | {psi:.1f} |")
+        bones = get_correlated_bones(force)
+        print(f"| {n} | {force:.1f} | {psi:.1f} | {bones} |")
 
 def generate_csv(filename):
     with open(filename, 'w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(['Material', 'Config', 'Spacing_mm', 'Layers', 'Force_lbf', 'PSI'])
+        writer.writerow(['Material', 'Config', 'Spacing_mm', 'Layers', 'Force_lbf', 'PSI', 'Correlated_Bones'])
         for mat_name, material_data in MATERIALS_DICT.items():
             for config in ['pegged', 'unpegged']:
                 spacing = 1.52 if config == 'pegged' else None
@@ -96,7 +117,8 @@ def generate_csv(filename):
                 for n in range(1, 11):
                     force = calculate_force(material_data, n, config, spacing)
                     psi = force / A
-                    writer.writerow([mat_name, config, spacing_str, n, round(force, 1), round(psi, 1)])
+                    bones = get_correlated_bones(force)
+                    writer.writerow([mat_name, config, spacing_str, n, round(force, 1), round(psi, 1), bones])
 
 def interactive_mode():
     print("Martial Arts Breaking Calculator")
